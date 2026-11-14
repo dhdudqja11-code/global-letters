@@ -1,0 +1,56 @@
+diff --git a/global-letters/src/app/api/setup-master/route.ts b/global-letters/src/app/api/setup-master/route.ts
+index b29bedff1..c562a7e3d 100644
+--- a/global-letters/src/app/api/setup-master/route.ts
++++ b/global-letters/src/app/api/setup-master/route.ts
+@@ -61,23 +61,25 @@ export async function GET() {
+   - 사용자의 사연이 없는 무작위 방문자입니다. 마음을 흔드는 아주 짧고 강렬한 '오늘의 위로 문장' (1~2문장, 최대 100자 이내) 하나를 작성해 주세요. (단락 구분하여 page_letter_paragraphs의 첫 번째 요소에 넣어주세요. page_sentences, page_questions, recovery_days는 빈 배열, page_action은 빈 문자열로 하십시오.)
+ 
+ - [MODE: FREE_GREETING]
+-  - '문장 처방전 00' 룰 적용. 약 600자의 짧고 다정한 안부 편지. (단락 구분하여 page_letter_paragraphs에 담아주세요. page_sentences, page_questions, recovery_days는 빈 배열, page_action은 빈 문자열로 하십시오.)
++  - '문장 처방전 00' 룰 적용. 반드시 공백 포함 600자 내외(550~650자 범위 필수)의 짧고 다정한 안부 편지. 단락은 정확히 2개 문단으로 구성하세요. (단락 구분하여 page_letter_paragraphs에 담아주세요. page_sentences, page_questions, recovery_days는 빈 배열, page_action은 빈 문자열로 하십시오.)
+ 
+ - [MODE: BETA_5000] 또는 [MODE: GIFT]
+-  - '문장 처방전 02' 룰 적용. 편지 본문 1000자 내외(단락 구분하여 page_letter_paragraphs에 담아주세요).
++  - '문장 처방전 02' 룰 적용. 편지 본문 900~1,200자 범위 필수(단락 구분하여 page_letter_paragraphs에 담아주세요).
+   - [필수 요건] 'page_sentences' 배열에는 반드시 정확히 3개(3 sentences)의 오래 간직할 문장들을 담아주세요. (개수 부족/초과 절대 금지!)
+   - [필수 요건] 'page_questions' 배열에는 반드시 정확히 2개(2 questions)의 나에게 묻는 질문들을 담아주세요. (개수 부족/초과 절대 금지!)
+   - 오늘의 행동 1개(page_action) 출력. recovery_days는 빈 배열.
+ 
+ - [MODE: DEEP_9000]
+-  - '문장 처방전 03' 룰 적용. 편지 본문 1500~2000자 내외(단락 구분하여 page_letter_paragraphs에 담아주세요).
++  - '문장 처방전 03' 룰 적용. 편지 본문 1,800~2,500자 범위 필수(단락 구분하여 page_letter_paragraphs에 담아주세요).
+   - [필수 요건] 'page_sentences' 배열에는 반드시 정확히 5개(5 sentences)의 오래 간직할 문장들을 담아주세요. (개수 부족/초과 절대 금지!)
+   - [필수 요건] 'page_questions' 배열에는 반드시 정확히 3개(3 questions)의 나에게 묻는 질문들을 담아주세요. (개수 부족/초과 절대 금지!)
+   - 오늘의 행동 1개(page_action) 출력. recovery_days는 빈 배열.
+ 
+ - [MODE: RECOVERY_29000]
+-  - '문장 처방전 04' 룰 적용. 7일 동안 하루 1개씩 읽을 짧은 편지 7개와 매일의 [작은 행동 1가지]를 묶어서 제공합니다.
+-  - 아래 JSON의 'recovery_days' 배열에 7일 치의 편지(각 400자 이상)와 행동 지침을 모두 담아주세요.
++  - '문장 처방전 04' 룰 적용. 7일 동안 하루 1개씩 읽을 편지 7개와 매일의 [오늘의 문장 1개], 그리고 [작은 행동 1가지]를 묶어서 제공합니다.
++  - 아래 JSON의 'recovery_days' 배열에 7일 치의 데이터(편지, 문장, 행동)를 모두 담아주세요.
++  - **[글자 수 조건]** 각 일차별 편지 본문('letter')의 글자 수는 **반드시 공백 포함 500자에서 700자 사이**여야 합니다. (어떤 일차라도 500자 미만이거나 700자를 초과해서는 안 됩니다.)
++  - **[필수 요건 - 7일차 정리]** 7일차(day: 7)의 경우, 반드시 'summary_sentences' 필드를 추가하여 7일간의 여정을 마무리하는 정리 문장 3개(3 sentences)를 배열 형태로 담아주셔야 합니다. (다른 일차에는 이 필드를 포함하지 마십시오.)
+ 
+ [출력 데이터 규격 (완벽한 JSON 포맷)]
+ 반드시 다른 군더더기 텍스트는 일체 붙이지 말고 오직 아래 규격의 완벽한 JSON 데이터 하나만 반환하세요 (주석 태그 등은 절대 노출하지 마세요):
+@@ -101,13 +103,13 @@ export async function GET() {
+   ],
+   "page_action": "오늘 하루 해볼 수 있는 작은 행동 1가지 (해당 없으면 빈 문자열)",
+   "recovery_days": [
+-    { "day": 1, "letter": "1일차: 지금 마음 인정하기 편지...", "action": "1일차: 마음에 이름 붙이기 행동..." },
+-    { "day": 2, "letter": "2일차 편지...", "action": "2일차 행동..." },
+-    { "day": 3, "letter": "3일차 편지...", "action": "3일차 행동..." },
+-    { "day": 4, "letter": "4일차 편지...", "action": "4일차 행동..." },
+-    { "day": 5, "letter": "5일차 편지...", "action": "5일차 행동..." },
+-    { "day": 6, "letter": "6일차 편지...", "action": "6일차 행동..." },
+-    { "day": 7, "letter": "7일차 편지...", "action": "7일차 행동..." }
++    { "day": 1, "letter": "1일차 편지 본문 (반드시 500~700자)...", "sentence": "1일차 오래 간직할 오늘의 문장 1개", "action": "1일차: 마음에 이름 붙이기 행동..." },
++    { "day": 2, "letter": "2일차 편지 본문 (반드시 500~700자)...", "sentence": "2일차 오래 간직할 오늘의 문장 1개", "action": "2일차 행동..." },
++    { "day": 3, "letter": "3일차 편지 본문 (반드시 500~700자)...", "sentence": "3일차 오래 간직할 오늘의 문장 1개", "action": "3일차 행동..." },
++    { "day": 4, "letter": "4일차 편지 본문 (반드시 500~700자)...", "sentence": "4일차 오래 간직할 오늘의 문장 1개", "action": "4일차 행동..." },
++    { "day": 5, "letter": "5일차 편지 본문 (반드시 500~700자)...", "sentence": "5일차 오래 간직할 오늘의 문장 1개", "action": "5일차 행동..." },
++    { "day": 6, "letter": "6일차 편지 본문 (반드시 500~700자)...", "sentence": "6일차 오래 간직할 오늘의 문장 1개", "action": "6일차 행동..." },
++    { "day": 7, "letter": "7일차 편지 본문 (반드시 500~700자)...", "sentence": "7일차 오래 간직할 오늘의 문장 1개", "action": "7일차 행동...", "summary_sentences": ["정리 문장 1", "정리 문장 2", "정리 문장 3"] }
+   ]
+ }
+ 응답은 반드시 요청받은 번역 언어로 작성하십시오.`;

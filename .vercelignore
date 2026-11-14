@@ -1,0 +1,9 @@
+node_modules
+.next
+.firebase
+.git
+.env*
+*.bak
+*.before_*
+*_backup*
+.connect-ai-dev.pid

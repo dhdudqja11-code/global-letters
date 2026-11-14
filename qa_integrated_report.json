@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-06-08T12:22:56.458Z",
+  "totalDuration": "218.56s",
+  "overallResult": "ALL_PASSED",
+  "tests": [
+    {
+      "name": "SPEC CHECK (스펙 규격 검사)",
+      "passed": true,
+      "duration": "91.47s",
+      "exitCode": 0
+    },
+    {
+      "name": "E2E VERIFICATION (유료/무료 시나리오 E2E)",
+      "passed": true,
+      "duration": "110.82s",
+      "exitCode": 0
+    },
+    {
+      "name": "STRESS TEST (다양성 스트레스 테스트 3회)",
+      "passed": true,
+      "duration": "16.28s",
+      "exitCode": 0
+    }
+  ]
+}

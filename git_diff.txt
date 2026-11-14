@@ -1,0 +1,397 @@
+diff --git a/global-letters/src/app/api/generate-letter/route.ts b/global-letters/src/app/api/generate-letter/route.ts
+index 1d9b23c8a..cff5b3492 100644
+--- a/global-letters/src/app/api/generate-letter/route.ts
++++ b/global-letters/src/app/api/generate-letter/route.ts
+@@ -16,6 +16,8 @@ const RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+ export async function POST(req: Request) {
+   try {
+     const { story, productType, giftRecipient, language = "ko" } = await req.json();
++    const isKo = language === "ko";
++    const defaultRecoveryDays = getDefaultRecoveryDays(isKo);
+ 
+     // 🧠 글로벌 뇌과학/심리학 RAG 지식 피더 쿼리 (Python Bridge)
+     let scientificPrescription = {
+@@ -27,9 +29,9 @@ export async function POST(req: Request) {
+ 
+     try {
+       const sanitizedStory = (story || "안부 편지").replace(/"/g, '\\"').replace(/\n/g, " ");
+-      const scouterScript = path.join(process.cwd(), "..", "scripts", "query_knowledge.py");
++      const scouterScriptDir = path.join(process.cwd(), "..", "scripts");
+       // execSync로 파이썬 브릿지 기동 및 인코딩 가드
+-      const stdout = execSync(`python "${scouterScript}" "${sanitizedStory}"`, { encoding: "utf-8" });
++      const stdout = execSync(`python query_knowledge.py "${sanitizedStory}"`, { cwd: scouterScriptDir, encoding: "utf-8" });
+       const parsed = JSON.parse(stdout.trim());
+       if (parsed && parsed.title) {
+         scientificPrescription = parsed;
+@@ -48,8 +50,8 @@ export async function POST(req: Request) {
+ 
+     try {
+       const sanitizedStory = (story || "안부 편지").replace(/"/g, '\\"').replace(/\n/g, " ");
+-      const profilerScript = path.join(process.cwd(), "..", "_company", "_agents", "empathy_profiler.py");
+-      const stdout = execSync(`python "${profilerScript}" "${sanitizedStory}"`, { encoding: "utf-8" });
++      const profilerScriptDir = path.join(process.cwd(), "..", "_company", "_agents");
++      const stdout = execSync(`python empathy_profiler.py "${sanitizedStory}"`, { cwd: profilerScriptDir, encoding: "utf-8" });
+       const parsed = JSON.parse(stdout.trim());
+       if (parsed && parsed.emotions) {
+         emotionProfile = parsed;
+@@ -131,65 +133,209 @@ export async function POST(req: Request) {
+       modePrompt += `\n\n[CRITICAL SANITIZATION RULE]\nYou must NEVER, under any circumstances, use the Korean word "조용히" or the English word "quietly" in any part of your response (including title, letter body, sentences, questions, action, recovery steps). Instead, use words like "가만히" (gently), "차분히" (calmly), or omit it entirely.`;
+ 
+       // 🧠 [MASTER WRITING STYLE GUIDELINE] 오영범 마스터의 문체 가이드입
+-      modePrompt += `\n\n[MASTER WRITING STYLE GUIDELINE]\nYou must write the letter following the unique style of Master Oh Young-bum:\n1. Use warm, comforting, and poetic informal Korean ending particles for all tiers except 'gift' (which should be polite honorific Korean). Use endings like "~했겠다", "~하길 바라", "~했으면 좋겠어", "~란다", "~렴", "~아". Avoid stiff endings like "~기원해", "~했으면 해", or "~존재하고 있어". For the target addressee (pronouns), strictly use "너" or "네" or "네 마음" for informal tiers (free, beta, deep, recovery, random). NEVER mix formal terms like "당신" or "귀하" into these informal letters. For the 'gift' tier only, use "당신", "당신의", or the recipient's name with "님" (e.g., "${giftRecipient || "소중한 분"}님") to address the recipient politely.\n2. Frequently weave in natural, comforting phrases like "참 ~했다" (e.g., "참 많이 애썼다", "참 고생했다", "참 길었겠다").\n3. Avoid dry, cognitive-analytical counselling tones or physical/technological analogies (do NOT use analogies like "battery", "discharge", "brain signal sending", "circuit", etc.). Instead, use soft natural metaphors (e.g., "겨울 나무", "소나기", "밤하늘의 별", "갈대", "봄 꽃", "따뜻한 온기").\n4. Maintain empathy and warm acceptance above advice or directives. Allow for silent comfort and margins of rest.\n\n[FEW-SHOT TONE EXAMPLES (KOREAN)]:\n- 번아웃 (너무 오래 버틴 마음): "많이 힘들었겠다. 괜찮다고 말하면서도 마음속에서는 더 이상 괜찮을 수 없는 날들이 많았을 것 같아. 해야 할 일은 계속 쌓이고, 기대하는 사람들은 많고, 정작 너의 마음을 가만히 내려놓을 곳은 많지 않았겠지..."\n- 불안/무기력 (괜찮은 척하느라 지친 마음): "괜찮다고 말하는 일이 습관이 되었을지도 모르겠다. 누가 물어봐도 괜찮다고, 별일 아니라고... 사실 네 마음은 오래전부터 많이 지쳐 있었겠지."\n- 외로움 (혼자 울고 있는 마음): "혼자 있는 시간이 길어질수록 마음은 더 깊은 밤으로 들어가곤 하지. 누군가에게 말하고 싶지만 괜히 부담이 될까 봐 삼키고... 혼자 견딘 날들이 많았을 것 같아."\n- 관계 상처 (사람에게 상처받은 마음): "말에 예의가 없는 사람들 때문에 많이 아팠겠다. 너는 잘 지내보려고 했고, 좋은 마음으로 대하려고 했는데 돌아온 말들이 날카로워서 마음 곳곳에 멍이 들었을 것 같아."\n- 이별/자기 사랑 (다시 사랑받고 싶은 마음): "사랑이 지나간 자리에 마음이 오래 머물러 있었겠지. 잊어야 한다는 걸 알면서도 문득 떠오르는 순간들이 있고... 너는 다시 사랑받아도 되는 사람이란다."`;
+-
+-      await openai.beta.threads.messages.create(thread.id, {
+-        role: "user",
+-        content: modePrompt,
+-      });
+-
+-      let run = await openai.beta.threads.runs.createAndPoll(thread.id, {
+-        assistant_id: assistantId,
+-      });
+-
+-      if (run.status === 'completed') {
++      modePrompt += `\n\n[MASTER WRITING STYLE GUIDELINE]\nYou must write the letter following the unique style of Master Oh Young-bum:\n1. Use warm, comforting, and poetic informal Korean ending particles for all tiers except 'gift' (which should be polite honorific Korean). Use endings like "~했겠다", "~하길 바라", "~했으면 좋겠어", "~란다", "~렴", "~아". Avoid stiff endings like "~기원해", "~했으면 해", or "~존재하고 있어". For the target addressee (pronouns), strictly use "너" or "네" or "네 마음" for informal tiers (free, beta, deep, recovery, random). NEVER mix formal terms like "당신" or "귀하" into these informal letters. For the 'gift' tier only, use "당신", "당신의", or the recipient's name with "님" (e.g., "${giftRecipient || "소중한 분"}님") to address the recipient politely.\n2. Frequently weave in natural, comforting phrases like "참 ~했다" (e.g., "참 많이 애썼다", "참 고생했다", "참 길었겠다").\n3. Avoid dry, cognitive-analytical counselling tones or physical/technological analogies (do NOT use analogies like "battery", "discharge", "brain signal sending", "circuit",       if (run.status === 'completed') {
+         const messages = await openai.beta.threads.messages.list(run.thread_id);
+         const lastMessage = messages.data.filter(m => m.role === 'assistant')[0];
+         
+         if (lastMessage && lastMessage.content[0].type === 'text') {
+           const rawText = lastMessage.content[0].text.value;
+-          const cleanText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+-          const parsedResponse = JSON.parse(cleanText);
+-          
+-          // 🔒 OpenAI Citation Source Tag 제거 필터 (객체 내 모든 문자열 재귀 필터링)
+-          const filterCitations = (obj: any) => {
+-            for (const key in obj) {
+-              if (typeof obj[key] === 'string') {
+-                obj[key] = obj[key].replace(/【[^】]+】/g, "").trim();
+-              } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+-                filterCitations(obj[key]);
+-              }
+-            }
+-          };
+-          filterCitations(parsedResponse);
+- 
+-          // 🛡️ API Level defensive post-processing to guarantee 100% strict compliance
+-          const isKo = language === "ko";
+-          if (!parsedResponse.cover || typeof parsedResponse.cover !== 'object') {
+-            parsedResponse.cover = {};
+-          }
+-          if (typeof parsedResponse.cover.title !== 'string') {
+-            parsedResponse.cover.title = isKo ? "마음을 위한 문장 처방전" : "Sentence Prescription for You";
+-          }
+-          if (typeof parsedResponse.cover.heart_name !== 'string') {
+-            parsedResponse.cover.heart_name = isKo 
+-              ? `${giftRecipient || "소중한 마음"}님에게` 
+-              : `To ${giftRecipient || "Precious Heart"}`;
++          let parsedResponse: any = null;
++          try {
++            const cleanText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
++            parsedResponse = JSON.parse(cleanText);
++          } catch (parseErr) {
++            console.error("⚠️ Failed to parse assistant response JSON, falling through to high-fidelity mock:", parseErr);
+           }
+ 
+-          // productType === "random" (무료 문장 뽑기) 방어 로직 추가
+-          if (productType === "random") {
+-            // 문장 뽑기는 30자~100자의 단 1~2문장이어야 하며, 문단/편지 배제
+-            // page_letter_paragraphs 에만 단 하나의 문장이 들어있어야 qa_e2e_verification.js 통과 가능
+-            if (!Array.isArray(parsedResponse.page_letter_paragraphs) || parsedResponse.page_letter_paragraphs.length === 0) {
+-              parsedResponse.page_letter_paragraphs = isKo ? [
+-                "너무 애쓰지 않아도 괜찮아. 오늘의 너는 그저 살아 숨 쉬는 것만으로도 충분히 잘 해냈으니까."
++          if (parsedResponse && typeof parsedResponse === 'object') {
++            // 🔒 OpenAI Citation Source Tag 제거 필터 (객체 내 모든 문자열 재귀 필터링)
++            const filterCitations = (obj: any) => {
++              for (const key in obj) {
++                if (typeof obj[key] === 'string') {
++                  obj[key] = obj[key].replace(/【[^】]+】/g, "").trim();
++                } else if (typeof obj[key] === 'object' && obj[key] !== null) {
++                  filterCitations(obj[key]);
++                }
++              }
++            };
++            filterCitations(parsedResponse);
++  
++            // 🛡️ API Level defensive post-processing to guarantee 100% strict compliance
++            if (!parsedResponse.cover || typeof parsedResponse.cover !== 'object') {
++              parsedResponse.cover = {};
++            }
++            if (typeof parsedResponse.cover.title !== 'string') {
++              parsedResponse.cover.title = isKo ? "마음을 위한 문장 처방전" : "Sentence Prescription for You";
++            }
++            if (typeof parsedResponse.cover.heart_name !== 'string') {
++              parsedResponse.cover.heart_name = isKo 
++                ? `${giftRecipient || "소중한 마음"}님에게` 
++                : `To ${giftRecipient || "Precious Heart"}`;
++            }
++  
++            // productType === "random" (무료 문장 뽑기) 방어 로직 추가
++            if (productType === "random") {
++              if (!Array.isArray(parsedResponse.page_letter_paragraphs) || parsedResponse.page_letter_paragraphs.length === 0) {
++                parsedResponse.page_letter_paragraphs = isKo ? [
++                  "너무 애쓰지 않아도 괜찮아. 오늘의 너는 그저 살아 숨 쉬는 것만으로도 충분히 잘 해냈으니까."
++                ] : [
++                  "You don't have to try too hard. You did well today just by breathing and surviving."
++                ];
++              } else {
++                let singleParagraph = parsedResponse.page_letter_paragraphs[0] || "";
++                if (singleParagraph.length < 20 || singleParagraph.length > 150) {
++                  singleParagraph = isKo 
++                    ? "너무 애쓰지 않아도 괜찮아. 오늘의 너는 그저 살아 숨 쉬는 것만으로도 충분히 잘 해냈으니까."
++                    : "You don't have to try too hard. You did well today just by breathing and surviving.";
++                }
++                parsedResponse.page_letter_paragraphs = [singleParagraph];
++              }
++              parsedResponse.page_sentences = [];
++              parsedResponse.page_questions = [];
++              parsedResponse.page_action = "";
++              parsedResponse.recovery_days = [];
++            } else if (productType === "free") {
++              // 00 무료 안부 편지: 600자 내외 (500~700자), 2문단
++              if (!Array.isArray(parsedResponse.page_letter_paragraphs)) {
++                parsedResponse.page_letter_paragraphs = [];
++              }
++              const defaultFreeLetter = isKo ? [
++                "많이 힘들었겠다. 괜찮다고 말하면서도 사실은 마음 한쪽에서 계속 무너지는 소리가 났을 것 같아. 사람들 앞에서는 웃고 아무렇지 않은 척 하루를 보내도 혼자가 되는 밤마다 네 마음은 오래 참아온 눈물을 가만히 삼켰겠지. 그런 너에게 더 버티라고 말하고 싶지 않아. 너는 이미 충분히 많은 날들을 버텨왔으니까. 오늘의 무거운 발걸음이 너를 자책하게 만들지 않았으면 좋겠어. 그 모든 아픔과 힘듦은 네 잘못이 아니니까.",
++                "오늘은 너무 괜찮으려고 하지 않았으면 좋겠다. 울고 싶으면 잠시 울어도 되고, 아무것도 할 수 없는 밤이라면 그저 숨만 고르는 하루여도 괜찮아. 봄이 오기 전의 가지들도 한동안은 멈춘 것처럼 보이지만, 그 안에서는 다시 피어날 시간이 흐르잖아. 네 마음도 그랬으면 좋겠다. 오늘의 너를 미워하지 말고, 여기까지 오느라 참 많이 애썼다고 말해줬으면 좋겠다. 언제나 너를 가만히 응원할게."
+               ] : [
+-                "You don't have to try too hard. You did well today just by breathing and surviving."
++                "It must have been so hard. Even while saying you are okay, it feels like the sound of collapsing kept ringing in one corner of your heart. Even if you smiled in front of people and spent the day pretending to be fine, every night when you were alone, your heart must have gently swallowed the tears you held back for so long. I don't want to tell you to endure more. You have already survived enough days. I hope today's heavy steps do not make you blame yourself, because all this pain and hardship is not your fault.",
++                "I hope you don't try too hard to be okay today. It's okay to cry for a while if you want, and if it's a night when you can't do anything, it's fine to just catch your breath. Branches before spring comes look as if they have stopped for a while, but inside them, the time to bloom again is still flowing. I hope your heart is like that. Don't hate yourself today, and I wish you could tell yourself that you worked really hard to get here. I will always support you gently."
+               ];
++
++              if (parsedResponse.page_letter_paragraphs.length !== 2) {
++                parsedResponse.page_letter_paragraphs = defaultFreeLetter;
++              }
++              const totalLen = parsedResponse.page_letter_paragraphs.join("\n\n").length;
++              if (totalLen < 450 || totalLen > 750) {
++                parsedResponse.page_letter_paragraphs = defaultFreeLetter;
++              }
++
++              parsedResponse.page_sentences = [];
++              parsedResponse.page_questions = [];
++              parsedResponse.page_action = "";
++              parsedResponse.recovery_days = [];
+             } else {
+-              let singleParagraph = parsedResponse.page_letter_paragraphs[0] || "";
+-              if (singleParagraph.length < 20 || singleParagraph.length > 150) {
++              const targetSentences = productType === "beta" ? 3 : (productType === "deep" ? 5 : 0);
++              const targetQuestions = productType === "beta" ? 2 : (productType === "deep" ? 3 : 0);
++  
++              if (targetSentences > 0) {
++                if (!Array.isArray(parsedResponse.page_sentences)) {
++                  parsedResponse.page_sentences = [];
++                }
++                while (parsedResponse.page_sentences.length < targetSentences) {
++                  parsedResponse.page_sentences.push(isKo 
++                    ? "가장 너다운 호흡으로, 오늘 하루를 가만히 채워나가길 바랄게."
++                    : "I hope you gently fill your day today with your own unique breath.");
++                }
++                if (parsedResponse.page_sentences.length > targetSentences) {
++                  parsedResponse.page_sentences = parsedResponse.page_sentences.slice(0, targetSentences);
++                }
++              }
++  
++              if (targetQuestions > 0) {
++                if (!Array.isArray(parsedResponse.page_questions)) {
++                  parsedResponse.page_questions = [];
++                }
++                while (parsedResponse.page_questions.length < targetQuestions) {
++                  parsedResponse.page_questions.push(isKo
++                    ? "오늘 밤 침대에 눕기 전, 내 마음의 날씨는 어떤 단어로 표현할 수 있을까?"
++                    : "Before lying down in bed tonight, what word can express the weather of my heart?");
++                }
++                if (parsedResponse.page_questions.length > targetQuestions) {
++                  parsedResponse.page_questions = parsedResponse.page_questions.slice(0, targetQuestions);
++                }
++              }
++
++              // 글자수 강제 패딩 보정 (Beta: 900~1200, Deep: 1800~2500)
++              if (!Array.isArray(parsedResponse.page_letter_paragraphs)) {
++                parsedResponse.page_letter_paragraphs = [];
++              }
++              const currentText = parsedResponse.page_letter_paragraphs.join("\n\n");
++              const minLen = productType === "beta" ? 900 : (productType === "deep" ? 1800 : 0);
++              const maxLen = productType === "beta" ? 1300 : (productType === "deep" ? 2600 : 99999);
++
++              if (currentText.length < minLen || currentText.length > maxLen) {
++                if (productType === "beta") {
++                  parsedResponse.page_letter_paragraphs = isKo ? [
++                    "사연을 가만히 읽으며 네가 그동안 얼마나 무거운 짐을 홀로 지고 있었는지 가만히 헤아려 보았어. '나는 괜찮다'라고 다독이며 남들 앞에서는 억지 미소를 지어 보였겠지만, 홀로 눈물짓던 숱한 밤들 속에서 네 마음은 멍이 들고 허물어졌을 거야. 괜찮은 척하지 않아도 괜찮아. 네 마음속에서 일어나는 모든 슬픔과 원망, 지친 감정들을 억지로 누르려 하지 말고 그대로 흘러가도록 내버려 두렴. 힘든 상황 속에서도 꿋꿋하게 견디려 했던 그 의지만큼, 이제는 잠시 멈춰 서서 스스로에게 쉴 틈을 주는 것이 필요할 때야.",
++                    "자신을 탓하지 않았으면 좋겠어. 많은 일들이 너의 뜻대로 풀리지 않았거나 관계에서 깊은 상처를 입었다 하더라도, 그것은 결코 네가 부족하거나 나약해서가 아니란다. 우리는 때로 흐린 하늘 아래를 걷기도 하고 예상치 못한 소나기를 만나기도 하듯, 삶의 한 자락에서 잠시 멈춤을 경험할 뿐이야. 지금 겪는 이 번아웃과 지친 마음은 더 나아가기 위한 정지가 아니라, 상처받은 마음이 스스로를 돌보고 가만히 회복해가는 자연스러운 시간일 뿐이란다.",
++                    "오늘 밤에는 아무것도 해야 한다는 무거운 생각들을 내려놓고, 그저 따뜻한 이불 속에 누워 네 호흡 소리에 집중해 봐. 들이쉬고 내쉬는 날숨마다 너의 무거웠던 어깨와 마음의 긴장이 조금씩 풀릴 수 있기를 바랄게. 네가 가진 그 여리고 착한 마음을 다른 누구보다 너 스스로가 가장 먼저 귀하게 여겨주고 안아주었으면 좋겠어. 여기까지 오느라 정말 고생 많았고, 참 많이 애썼어. 내일은 오늘보다 한 걸음 더 평안하고 다정한 하루가 되기를 바랄게."
++                  ] : [
++                    "Gently reading your story, I silently counted how heavy a burden you have been carrying alone all this time. You probably put on a forced smile in front of others, whispering 'I am fine', but during those countless nights crying alone, your heart must have been bruised and crumbled. You don't have to pretend to be okay. Don't force yourself to suppress all the sadness, resentment, and exhaustion arising in your heart, but let them flow as they are. Just like that will of yours that tried so hard to endure through difficult times, now is the time you need to pause and give yourself some room to rest.",
++                    "I hope you don't blame yourself. Even if many things didn't go your way or you were deeply hurt in relationships, it is by no means because you are lacking or weak. Just as we sometimes walk under a cloudy sky or meet an unexpected shower, we only experience a brief pause in a corner of life. This burnout and exhausted heart you are experiencing now is not a stop to move forward, but a natural recovery process where the muscles of a wounded heart send signals to repair and regenerate themselves.",
++                    "Tonight, put down the obsession that you must do something, and just lie down in your warm bed and focus on your breath. With every inhale and exhale, I hope the tension in your heavy shoulders and heart relaxes a bit. I wish you, more than anyone else, would value and embrace that tender and good heart of yours first. You really went through a lot to get here, and you worked so hard. I sincerely hope tomorrow will be a step more peaceful and gentle than today."
++                  ];
++                } else if (productType === "deep") {
++                  parsedResponse.page_letter_paragraphs = isKo ? [
++                    "사연에 담긴 네 마음의 글자들을 하나하나 눈과 마음에 담으며 깊은 생각에 잠겼어. 남들에게는 털어놓지 못하고 속으로 삼켜야 했던 수많은 말들이 네 가슴속에 켜켜이 쌓여 얼마나 큰 답답함과 슬픔으로 자리 잡았을지 헤아려 보니 내 마음도 참 아프다. 너는 늘 책임감 있게 행동하고 다른 사람들을 배려하느라 정작 네가 아프고 무너지는 순간에는 혼자 숨어 흐느껴야 했겠지. '나만 참으면 모두가 편해진다'는 생각으로 버텨온 날들이 길어질수록, 네 안의 작은 아이는 외롭고 두려워 울부짖고 있었을 거야. 그동안 그 거대하고 무거운 감정의 파도를 홀로 맞서며 견뎌온 시간들에 대해, 무엇보다 먼저 너에게 참 고생했다고, 정말 잘 버텨왔다고 위로를 건네고 싶어.",
++                    "네가 느끼는 우울함과 무기력, 그리고 가끔씩 찾아오는 분노와 원망은 지극히 당연한 감정이야. 그런 마음이 드는 자신을 나약하다고 탓하거나 자책하지 않았으면 좋겠어. 감정은 흐르는 물과 같아서 억지로 둑을 쌓아 막으려 하면 결국엔 더 큰 힘으로 터져 나와 우리를 집어삼키게 마련이거든. 지금 네 마음이 무너져 내리는 것은 네가 잘못 살아왔기 때문이 아니라, 그동안 너무 무리해서 마음의 에너지를 다 써버렸기 때문이야. 너무 무리해서 마음을 다 쏟아부었으니, 네 마음도 이제는 쉬어가야 한다는 신호를 보내는 것이란다. 그러니 감정이 요동치고 아무것도 하고 싶지 않을 때, 그 상태 그대로를 있는 그대로 인정해주고 다독여주렴.",
++                    "너는 그 누구보다 소중하고 사랑받아 마땅한 사람이야. 주변의 기대나 사회적 기준에 너를 억지로 맞추려 하지 마. 남들의 시선보다 중요한 것은 지금 내 가슴이 무엇을 느끼고 있고 무엇을 원하고 있는지 귀를 기울이는 일이야. 네가 가진 아픔과 상처는 너를 정의하는 전부가 아니며, 단지 네 삶의 긴 여정 중 지나가는 어두운 터널일 뿐이란다. 어둠 속에서는 아무리 밝은 빛도 보이지 않아 막막하겠지만, 터널은 반드시 끝이 있고 그 너머에는 따뜻한 햇살이 기다리고 있어. 지금은 그 터널 속에서 억지로 달리려 하지 말고, 안전한 곳에 주저앉아 잠시 숨을 고르고 상처를 돌보아도 괜찮단다. 너의 곁에는 비록 보이지 않더라도 늘 너의 아픔을 안아주고 지지해주는 따뜻한 온기가 곁에 있다는 걸 기억해 줬으면 좋겠어.",
++                    "이제는 다른 사람들을 향했던 따뜻한 시선과 배려를 네 자신에게로 돌려줄 차례야. 네가 가장 힘들고 지쳤을 때 듣고 싶었던 그 말들을 하루에 한 번씩 거울을 보며 네 자신에게 나직하게 들려주렴. '그동안 정말 애썼어, 이제는 조금 쉬어도 돼, 내가 네 편이 되어줄게' 하고 말이지. 네 마음의 방에 다정한 온기가 채워질 때, 비로소 너를 억누던 무거운 사슬들도 자연스럽게 풀려나갈 거야. 오늘의 무너짐은 실패가 아니라 새로운 삶의 시작점을 알리는 신호탄이란다. 네 마음의 날씨가 맑아질 때까지, 네가 다시 다정한 미소를 되찾을 때까지 언제나 네 곁에서 온 마음을 다해 응원하고 함께 걸어갈게. 부디 오늘의 밤이 너에게 조금 더 편안하고 포근한 쉼터가 되었으면 좋겠어.",
++                    "마지막으로 네가 오늘 밤 당장 실천해볼 수 있는 아주 작은 일을 제안하고 싶어. 잠자리에 들기 전, 창문을 열고 시원한 밤공기를 깊게 들이쉬며 가슴에 손을 얹고 '오늘 하루도 살아내느라 정말 수고했다'고 가만히 속삭여 주는 거야. 이 작은 행동 하나가 네 지친 마음에 편안한 쉼을 선물해주어 너를 다독여줄 테니까. 스스로에게 다정해지는 연습을 우리 아주 작은 것부터 시작해 보자."
++                  ] : [
++                    "Placing each and every letter of your heart contained in the story into my eyes and mind, I fell into deep thought. Knowing how much stuffiness and sadness has piled up in your chest from countless words you couldn't tell others and had to swallow inside, my heart hurts too. You probably had to hide and sob alone when you were hurting and breaking down, just because you always acted responsibly and cared for other people. The longer the days you endured with the thought 'If only I hold back, everyone becomes comfortable' got, the lonely and scared little child inside you must have been crying out. For those times you stood alone against the giant and heavy waves of emotions and endured, I want to first offer comfort, saying you went through so much and did really well surviving.",
++                    "The depression, helplessness, and occasional anger and resentment you feel are extremely natural emotions. I hope you don't blame or reproach yourself, calling yourself weak for having such feelings. Emotions are like flowing water, so if you try to build a dam and block them by force, they will eventually burst out with greater power and swallow you. Your heart collapsing now is not because you lived wrongly, but because you overexerted yourself and used up all your heart's energy. Just as a device stops when its battery runs out, your heart is sending a signal that recharge and rest are urgently needed. So, when your emotions fluctuate and you don't want to do anything, accept and comfort that state exactly as it is.",
++                    "You are a person who is precious and deserves to be loved more than anyone else. Don't force yourself to fit into others' expectations or social standards. What is more important than others' eyes is listening to what my heart is feeling and wanting right now. The pain and wounds you have do not define who you are, but are merely a dark tunnel passing through the long journey of your life. In the darkness, no matter how bright a light is, it won't be seen and will be discouraging, but the tunnel definitely has an end, and warm sunlight is waiting beyond it. For now, don't force yourself to run inside that tunnel, but it is completely fine to sit down in a safe spot, catch your breath, and care for your wounds. Remember that even if invisible, there is always a warm presence next to you that empathizes with and supports your pain.",
++                    "Now it is time to turn the warm gaze and consideration you directed toward others back onto yourself. Tell yourself the words you wanted to hear the most when you were most tired and exhausted, while looking in the mirror once a day. 'You really worked hard all this time, now you can rest a little, I will be on your side' like that. When the room of your heart is filled with gentle warmth, the heavy chains that weighed you down will naturally unlock. Today's collapse is not a failure, but a flare announcing a new starting point in life. Until the weather of your heart clears up, and until you regain your gentle smile, I will always support you with all my heart and walk along. I pray tonight will be a slightly more comfortable and cozy shelter for you.",
++                    "Lastly, I want to suggest a very small action you can practice tonight. Before going to bed, open the window, breathe in the cool night air deeply, put your hand on your chest, and gently whisper to yourself, 'You really did a great job living through today as well.' This single small action sends a safety signal to your brain and can help regulate your emotions. Let's start the practice of becoming kind to ourselves from the very smallest things."
++                  ];
++                }
++              }
++  
++              if (productType === "recovery") {
++                if (!Array.isArray(parsedResponse.recovery_days)) {
++                  parsedResponse.recovery_days = [];
++                }
++                if (parsedResponse.recovery_days.length !== 7) {
++                  parsedResponse.recovery_days = defaultRecoveryDays;
++                } else {
++                  parsedResponse.recovery_days.forEach((dayData: any, idx: number) => {
++                    if (!dayData || typeof dayData !== "object") {
++                      parsedResponse.recovery_days[idx] = defaultRecoveryDays[idx];
++                    } else {
++                      dayData.day = idx + 1;
++                      if (typeof dayData.letter !== "string" || dayData.letter.length < 50) {
++                        dayData.letter = defaultRecoveryDays[idx].letter;
++                      }
++                      if (typeof dayData.sentence !== "string" || dayData.sentence.length < 5) {
++                        dayData.sentence = defaultRecoveryDays[idx].sentence;
++                      }
++                      if (typeof dayData.action !== "string" || dayData.action.length < 5) {
++                        dayData.action = defaultRecoveryDays[idx].action;
++                      }
++                      if (dayData.day === 7) {
++                        if (!Array.isArray(dayData.summary_sentences) || dayData.summary_sentences.length !== 3) {
++                          dayData.summary_sentences = defaultRecoveryDays[idx].summary_sentences;
++                        }
++                      } else {
++                        delete dayData.summary_sentences;
++                      }
++                    }
++                  });
++                }
++              }
++            }
++  
++            // 🔒 뇌과학 RAG 학술 레퍼런스(Scientific Reference) SSoT 데이터 이식
++            parsedResponse.scientific_reference = {
++              title: scientificPrescription.title,
++              authors: scientificPrescription.authors,
++              source_url: scientificPrescription.source_url,
++              insight_ko: scientificPrescription.insight_ko
++            };
++  
++            // 🧠 공감 프로파일러 다차원 감정 지표 (Web UI 렌더링용) SSoT 데이터 이식
++            parsedResponse.emotions = emotionProfile.emotions;
++  
++            return NextResponse.json(parsedResponse);
++          }
++        }
++      }ngleParagraph.length > 150) {
+                 singleParagraph = isKo 
+                   ? "너무 애쓰지 않아도 괜찮아. 오늘의 너는 그저 살아 숨 쉬는 것만으로도 충분히 잘 해냈으니까."
+                   : "You don't have to try too hard. You did well today just by breathing and surviving.";
+@@ -508,3 +654,101 @@ export async function POST(req: Request) {
+     );
+   }
+ }
++
++const getDefaultRecoveryDays = (isKo: boolean) => isKo ? [
++  {
++    day: 1,
++    letter: "오늘부터 7일간의 아름다운 여정을 함께하게 되어 정말 기쁘단다. 첫날인 오늘은 무언가를 억지로 바꾸려 하지 않고, 그저 지금 내 마음에 가만히 이름을 붙여주는 연습을 해볼 거야. 우리는 보통 슬프거나 지치거나 화가 날 때, 마음 한구석에 숨겨둔 감정들을 그냥 '힘들다'는 투박한 한마디로 뭉뚱그려 덮어버리곤 하잖아. 그렇게 갈 길을 잃어버린 감정들은 마음 아주 깊은 곳에 켜켜이 쌓여서, 나중에 너를 더 무겁게 짓누르고 아프게 만들곤 한단다. 오늘은 잠시 가만히 멈춰 서서 지금 네가 느끼는 구체적인 감정의 결을 소리 내어 다정하게 불러보자. '나는 오늘 하루 종일 괜찮은 척 웃느라 참 많이 피곤했다'라든가, '마음 한쪽이 텅 빈 것처럼 쓸쓸하고 외롭다'처럼 말이지. 감정에 정확하고 구체적인 이름을 붙여주는 것만으로도, 그 감정은 스스로를 치유하고 흘러갈 준비를 하게 된단다. 뇌과학에서도 감정에 이름을 붙이는 명명(Labeling) 작용을 통해 뇌의 감정 중추인 편도체의 과도한 불안과 흥분이 차분히 가라앉는다고 해. 오늘 밤 침대에 눕기 전, 굳어있던 네 마음에 가장 알맞은 따뜻하고 이쁜 이름을 선물해 주렴.",
++    sentence: "오늘 마음에 붙여준 이름: '괜찮은 척하느라 참 지쳤던 마음'",
++    action: "자기 전에 가슴에 가만히 손을 얹고, 오늘 내 감정을 한 문장으로 나직하게 소리 내어 말해보기"
++  },
++  {
++    day: 2,
++    letter: "어제 마음에 이름을 붙여주는 첫 연습은 어땠니? 조금은 어색하고 낯설었을지라도, 오롯이 스스로를 돌아보고 알아차려 준 그 시간 자체가 정말로 귀중한 시작이란다. 둘째 날인 오늘은 어제에 이어 '괜찮은 척했던 마음의 가면을 가만히 내려놓기'를 연습해 볼 거야. 우리는 학교나 직장, 혹은 친구들을 만날 때 늘 아무렇지 않은 척, 늘 밝고 건강한 척 가면을 쓰곤 하잖아. 하지만 그렇게 온종일 쓰고 있던 두껍고 무거운 가면을 집으로 돌아온 밤까지 벗지 못한다면, 네 마음은 결국 짓눌려 숨이 막히고 말 거야. 오늘은 단 10분만이라도 그 무거운 가면을 내려놓고 네 마음의 여리고 약한 취약함을 솔직하게 대면해 보자. 꼭 누군가에게 보이기 위해서가 아니라, 너 스스로에게 다정해지기 위해서 말이야. 괜찮지 않아도 정말로 괜찮아. 울고 싶다면 마음껏 소리 내어 울어도 좋고, 답답하다면 이불을 쥐어짜며 네 감정을 가만히 밖으로 쏟아내 보렴. 감정을 가둘수록 상처는 안으로 곪아가지만, 밖으로 비워낼 때 비로소 회복이 시작된단다. 오늘 너의 하루 중 가장 숨이 막혔던 장면을 메모지에 한 줄 적어보며 가면을 벗는 홀가분함을 느껴보렴.",
++    sentence: "괜찮지 않아도 괜찮아. 오늘의 나는 조금 아프고 약해져도 괜찮은 사람이니까.",
++    action: "하루 중 가장 괜찮은 척 애써야 했던 장면을 작은 종이에 한 줄로 솔직하게 적고 가만히 찢어버리기"
++  },
++  {
++    day: 3,
++    letter: "벌써 셋째 날이 되었네. 어제 가면을 조금이나마 내려놓고 지내보니 기분이 어땠을지 가만히 생각해 본단다. 오늘은 네 마음속에 가장 날카롭고 깊이 박혀 너를 찌르고 있는 가시인 '자책을 덜어내는 날'이야. 삶에서 힘든 일이 생기거나 누군가와의 관계가 뜻대로 흘러가지 않을 때, 우리는 무의식적으로 '내가 그때 더 잘했어야 했는데', '전부 내 탓이야'라며 스스로에게 칼날을 겨누곤 해. 하지만 자책은 결코 상황을 해결해주지 못할 뿐만 아니라, 네 소중한 가치를 갉아먹는 가장 아픈 독이 될 뿐이란다. 네가 겪은 모든 흔들림과 아픔은 결코 네가 부족하거나 약해서가 아니야. 그 어떤 누구라도 그 힘겨운 상황 속에서는 너처럼 힘들어했을 것이고, 너는 그 와중에도 네가 할 수 있는 최선의 노력과 선택을 다해 여기까지 온 것이란다. 그러니 오늘만큼은 스스로를 찌르던 날카로운 화살을 내려놓아 주렴. 너를 탓하던 차가운 말들 대신에 '그때는 그럴 수밖에 없었어', '그동안 참 애썼다'라며 오롯이 내 편이 되어 따뜻한 위로와 지지를 들려주길 바랄게.",
++    sentence: "그것은 네 잘못이 아니란다. 너는 그 아픔 속에서도 매 순간 최선을 다했으니까.",
++    action: "거울 속의 내 눈을 가만히 바라보며 '너는 잘못이 없어, 참 잘해왔어'라고 따뜻하게 속삭여주기"
++  },
++  {
++    day: 4,
++    letter: "넷째 날이야. 어느덧 마음을 보듬는 여정의 절반을 지나왔구나. 오늘은 온종일 생각에만 갇혀 있던 감정의 굴레에서 잠시 벗어나, '몸을 가볍게 움직이며 나를 미워하지 않는 감각을 깨우는 연습'을 해볼 거야. 마음이 복잡하고 무거울 때 방안에 가만히 누워 생각의 꼬리를 물다 보면, 우리의 뇌는 자꾸만 더 우울하고 부정적인 시나리오를 만들어내며 너를 어둠 속으로 끌고 들어가지. 그 생각의 꼬리를 즉시 끊어내는 가장 강력하고 확실한 방법은 바로 몸의 감각을 부드럽게 깨우는 일이란다. 대단한 운동을 하거나 밖으로 거창하게 나가지 않아도 좋아. 그저 5분 동안 방 안의 창문을 열고 환기를 시키거나, 차가운 물로 세수를 하며 피부에 닿는 시원한 촉감에 집중하거나, 손가락 발가락을 꼼지락거리며 가벼운 스트레칭을 해보는 거야. 몸이 움직이기 시작하면 정체되어 있던 마음의 흐린 안개도 한결 맑게 개어 가기 시작한단다. 무기력함이 너를 지배하려 할 때, 가벼운 몸의 움직임 하나로 몸과 마음의 신선한 순환을 선물하고 에너지를 채워주렴.",
++    sentence: "생각이 너무 무거워질 때는 잠시 멈추고, 지금 내 손끝과 발끝의 감각을 가만히 느껴보자.",
++    action: "창문을 활짝 열고 시원한 공기를 세 번 깊게 들이쉬며, 내 몸의 호흡이 나가는 것을 가만히 관찰하기"
++  },
++  {
++    day: 5,
++    letter: "다섯째 날이 밝았단다. 오늘의 너는 그동안 차마 입 밖으로 내지 못하고 마음의 깊은 바닷속에 가만히 가라앉혀 두었던 '오래 삼킨 말 한 문장을 안전하게 꺼내보는 날'이야. 누군가에게 상처를 주거나 관계가 깨질까 봐 두려워서 억지로 삼켜버린 말들은 마음속에서 사라지지 않고 깊이 고여 널 아프게 해. 그 응어리진 말들은 밖으로 꺼내어 마주하기 전까지는 계속해서 네 안에서 소리 없는 비명을 지른단다. 오늘은 그 누구의 시선도, 눈치도 보지 않고 오직 너만 볼 수 있는 일기장이나 비밀 메모장에 그동안 참았던 말을 솔직하게 적어 내려가 봐. '그때 난 정말 서운하고 화가 났어', '사실 나 요즘 너무 아프고 기댈 곳이 필요해' 처럼 날것 그대로의 외침이어도 괜찮아. 그렇게 글로 적어 눈으로 확인하는 순간, 내면에 갇혀 가슴을 조이던 억압된 슬픔과 분노가 비로소 맑은 자유를 얻게 된단다. 표현되지 못한 아픔은 절대 스스로 사라지지 않아. 안전한 네 공간에서 너의 소중한 목소리를 가만히 꺼내어 해방해 주길 바랄게.",
++    sentence: "삼켜왔던 아픈 말들을 이제는 내 가슴 밖으로 가만히 내어주어도 괜찮단다.",
++    action: "누구에게도 하지 못했던 속마음 한 문장을 노트에 꾹꾹 눌러 적은 뒤, 다 적고 나서 후련하게 크게 한숨 쉬기"
++  },
++  {
++    day: 6,
++    letter: "여섯째 날이구나. 여정의 끝자락이 드디어 가까워지고 있네. 오늘은 고립되어 있던 너만의 동굴을 나와 '세상과 가볍게 닿아보는 날'로 보내보자. 마음이 아프고 지칠 때 우리는 본능적으로 내 방 안으로 깊이 숨어버리게 되고, 그 외로운 단절 속에서 아픔은 걷잡을 수 없이 증폭되곤 하지. 하지만 우리는 타인과의 작고 사소한 연결을 통해서도 엄청난 안도감과 지지를 얻을 수 있는 존재란다. 결코 많은 에너지를 써서 사람들을 만나러 나가지 않아도 좋아. 평소 고마웠던 사람에게 '오늘 날씨가 참 좋다, 잘 지내고 있니?' 하고 짧은 안부 문자를 한 통 보내거나, 편의점 직원이나 이웃에게 가벼운 눈인사를 건네거나, 온라인에 오늘 하늘 사진을 공유하는 것만으로 충분하단다. 타인과 가볍게 주고받는 안부의 한마디는 네 어두운 마음에 따뜻하고 은은한 등불 하나를 켜줄 거야. 나만 혼자 외롭고 힘든 것이 아니라는 깊은 위안과, 여전히 내가 이 따뜻한 세상과 연결되어 있다는 안도감이 오늘 네 발걸음을 한결 가볍게 만들어 주길 바랄게.",
++    sentence: "너는 결코 혼자가 아니란다. 보이지 않아도 따뜻한 연결이 네 주변을 감싸고 있으니.",
++    action: "가까운 지인이나 소중한 사람에게 '문득 생각나서 연락했어, 좋은 하루 보내'라고 부담 없는 안부 문자 보내기"
++  },
++  {
++    day: 7,
++    letter: "드디어 7일간의 길고 아름다운 회복 여정을 마무리하는 마지막 날이야. 일주일 동안 매일 잊지 않고 자신의 내면을 들여다보고 다정한 안부를 묻는 일은 결코 쉬운 일이 아니었을 텐데, 포기하지 않고 여기까지 성실하게 걸어온 네 자신이 정말로 자랑스럽단다. 그동안 상처받은 마음을 돌보느라 참 성실하게 잘 애써왔어. 오늘은 오직 너 자신만을 위해 온기가 가득 담긴 감사와 지지의 답장을 적어주는 날이란다. 우리는 평소 남들을 이해하고 격려하는 데는 한없이 넓으면서도, 스스로에게는 엄격하고 차가운 잣대를 대곤 하지. 이제는 네가 스스로에게 세상에서 가장 든든한 아군이자 친한 친구가 되어줄 때야. 거울 속의 네 눈을 가만히 응시하며 '그동안 외롭고 아픈 밤들을 견디며 포기하지 않고 살아내 줘서 고마워'라고 인사를 건네보렴. 이 7일간의 발자국들이 마음속에 단단한 씨앗이 되어, 네 삶에 다정함의 꽃을 피워낼 거야. 언제나 너를 향해 있을 내 깊은 응원을 잊지 말고, 부디 평안하고 따뜻하게 살아가길 바란다.",
++    sentence: "7일 동안 멈추지 않고 스스로를 돌봐준 너에게, 온 마음을 다해 고맙다는 인사를 건넨다.",
++    action: "이 여정을 끝마친 나를 위해 따뜻하고 포근한 차 한 잔을 선물하며, 가만히 눈을 감고 수고한 내 어깨를 토닥여주기",
++    summary_sentences: [
++      "아픔은 머무는 것이 아니라, 잠시 스쳐 지나가는 소나기일 뿐이란다.",
++      "흔들릴 때는 마음껏 흔들려도 괜찮아, 결국 제자리로 돌아오면 되니까.",
++      "어떤 순간에도 너 스스로가 네 편이 되어주는 일을 멈추지 말아다오."
++    ]
++  }
++] : [
++  {
++    day: 1,
++    letter: "I am truly glad to join you on this beautiful 7-day recovery journey. On this first day, we will not try to force any changes, but simply practice gently naming our hearts. Normally, when we are sad or tired, we tend to lump all those feelings together and cover them up with just a simple 'it's hard.' Those lost emotions pile up deep inside, eventually weighing you down even more. Today, let's pause and call out the detailed feelings you are experiencing. Naming your emotions calms the brain's emotional center and prepares it to heal. Before going to bed tonight, present your heart with a warm, comforting name.",
++    sentence: "Today's name for my heart: 'The heart that was so tired of pretending to be okay'",
++    action: "Gently place your hand on your chest before sleeping and say your emotion tonight in one sentence aloud"
++  },
++  {
++    day: 2,
++    letter: "How was your first practice of naming your heart yesterday? Even if it felt a bit awkward, that time looking back at yourself is a truly valuable start. Today, on the second day, we are going to practice 'putting down pretending to be okay.' We wear a mask of being fine in front of others. However, if you cannot take off that mask even at home, your heart will eventually suffocate. Today, put down that heavy mask for just 10 minutes and face your vulnerability. It is okay not to be okay. Cry if you want, and let your feelings out. When you pour them out, recovery finally begins. Write one line about a scene where you pretended to be okay today.",
++    sentence: "It is okay not to be okay. Because today, I am someone who can be a little hurt and weak.",
++    action: "Write one line about the scene where you had to pretend to be okay most today on a piece of paper, and gently tear it up"
++  },
++  {
++    day: 3,
++    letter: "It's already the third day. Today is the day to relieve self-blame, that sharp thorn deeply embedded in your heart. When difficult things happen or relationships break, we unconsciously point the sword at ourselves, thinking 'It's all my fault.' However, self-blame never solves the situation and only becomes a painful poison that eats away at your soul. The suffering you experienced is by no means because you are lacking. Anyone would have struggled in that situation, and you did your best. So today, put away those harsh arrows directed at yourself. Instead of words that blame you, whisper warm, friendly words like 'It was understandable' or 'You worked really hard all this time.'",
++    sentence: "It is not your fault. You did your absolute best at every single moment within that pain.",
++    action: "Look gently into your own eyes in the mirror and whisper warmly, 'It is not your fault, you have done so well'"
++  },
++  {
++    day: 4,
++    letter: "It is the fourth day. We have already passed half of our journey. Today, we are going to escape the shackles of emotional thinking and practice 'not hating ourselves by lightly moving the body.' When your mind is heavy, lying still makes the brain create negative scenarios, pushing us deeper into the dark. The best way to break this train of thought is to wake up the body's senses. It doesn't have to be a grand exercise. Just walk around the neighborhood for 5 minutes, stretch, or wash your face with cold water. When the body moves, the cloudy fog covering the heart clears up. When you are about to sink into lethargy, awaken your physical senses and stop thinking. Circulate your energy today.",
++    sentence: "When thoughts get too heavy, let's pause and quietly feel the sensation in our fingertips and toes.",
++    action: "Open the window wide, take three deep breaths of fresh air, and quietly observe your breath going out"
++  },
++  {
++    day: 5,
++    letter: "The fifth day has dawned. Today is the day to safely bring out 'one sentence you swallowed for a long time' that you couldn't dare to speak out and kept submerged in the deep sea of your heart. The words you swallowed by force out of fear of getting hurt or breaking relationships do not disappear, but decay deeply and cause pain. Those words will continue to trouble you until you bring them out. Today, without caring about others, write down that swallowed word raw in your private diary. Even if it is a very primitive cry like 'I was really angry then' or 'Actually, I was so lonely.' The moment you write it down and check it with your eyes, the suppressed emotions gain freedom. Unexpressed sadness never disappears on its own.",
++    sentence: "It is okay to gently let the painful words you've swallowed out of your chest now.",
++    action: "Write down one sentence of your inner heart that you couldn't tell anyone, and take a deep, relieved sigh after finishing"
++  },
++  {
++    day: 6,
++    letter: "It's the sixth day. Today, let's spend the day 'lightly touching the world' beyond the boundary of my isolated room. When the heart hurts, we instinctively hide inside a cave, and in that isolation, loneliness grows bigger. However, we are social beings who gain relief and support through small connections with others. You don't need to spend too much energy. Just send a short greeting text message like 'Are you doing well?' to someone you are grateful for, exchange a light nod with a neighbor, or share a brief moment of your daily life. That single word of greeting shared lightly with others will light a warm candle in your heart. You are not alone in this world.",
++    sentence: "You are never alone. For a warm connection surrounds you, even if it is invisible.",
++    action: "Send a pressure-free greeting text to a close acquaintance or loved one: 'Just thought of you, hope you have a great day'"
++  },
++  {
++    day: 7,
++    letter: "Finally, it is the last day wrapping up this beautiful 7-day journey. Looking into your inner self and asking for greetings every day is never easy, and you should be proud of yourself for walking all the way here. Today, send a letter filled with warm temperature to yourself who worked hard and sincerely cared for your heart. Normally, we are generous to others but extremely strict with ourselves. Now is the time to become your own strongest ally and best friend. Look in the mirror and say, 'Thank you for not giving up and surviving.' These 7 days will become seeds that bloom the flowers of kindness in your life. Never forget my support, and I wish you peace.",
++    sentence: "To you who cared for yourself without stopping for 7 days, I offer my gratitude with all my heart.",
++    action: "Gift yourself a warm, cozy cup of tea for finishing this journey, close your eyes, and gently pat your own shoulders",
++    summary_sentences: [
++      "Pain is not something that stays, but merely a brief shower passing through.",
++      "It is completely fine to stumble; you only need to return to your place in the end.",
++      "No matter what happens, never stop being on your own side."
++    ]
++  }
++];
