@@ -1,0 +1,6 @@
+{
+  "test_id": "VT-007",
+  "purpose": "Verify GitHub push triggers automatic Vercel Preview deployment",
+  "branch": "vt007-preview-test",
+  "timestamp": "2026-11-14T11:34:01.192Z"
+}
